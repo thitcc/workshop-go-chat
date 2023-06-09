@@ -3,10 +3,22 @@ package main
 import (
 	"log"
 	"net/http"
+
+	"github.com/gorilla/websocket"
 )
+
+var upgrader = websocket.Upgrader{}
 
 func handleChat(w http.ResponseWriter, r *http.Request) {
 	log.Println("Conectado na rota /chat")
+
+	conn, err := upgrader.Upgrade(w, r, nil)
+
+	if err != nil {
+		log.Println(err)
+		conn.Close()
+		return
+	}
 }
 
 func main() {
