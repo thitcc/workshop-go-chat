@@ -9,8 +9,28 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
+func handleMessage(conn *websocket.Conn) {
+	defer func() {
+		conn.Close()
+		log.Println("Usuário desconectado")
+	}()
+
+	for {
+		_, message, err := conn.ReadMessage()
+
+		if err != nil {
+			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
+				log.Println("error: ", err)
+			}
+			break
+		}
+
+		log.Println(string(message))
+	}
+}
+
 func handleChat(w http.ResponseWriter, r *http.Request) {
-	log.Println("Conectado na rota /chat")
+	log.Println("Usuário conectado")
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 
@@ -19,6 +39,8 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		return
 	}
+
+	go handleMessage(conn)
 }
 
 func main() {
