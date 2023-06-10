@@ -11,8 +11,11 @@ import (
 type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
+	send chan []byte
 	Name string
 }
+
+var upgrader = websocket.Upgrader{}
 
 func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error) {
 	params := r.URL.Query()
@@ -28,6 +31,7 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 	client := &Client{
 		hub:  hub,
 		conn: conn,
+		send: make(chan []byte),
 		Name: name,
 	}
 
@@ -36,7 +40,7 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 	return client, nil
 }
 
-func (c *Client) handleMessage() {
+func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
 	}()
@@ -51,8 +55,42 @@ func (c *Client) handleMessage() {
 			break
 		}
 
-		log.Println(string(message))
+		log.Println("mensagem enviada: ", string(message))
 
 		c.hub.broadcast <- message
 	}
+}
+
+func (c *Client) writePump() {
+	for message := range c.send {
+		err := c.conn.WriteMessage(websocket.TextMessage, message)
+
+		log.Println("mensagem recebida: ", string(message))
+
+		if err != nil {
+			log.Println(err)
+		}
+	}
+}
+
+func serveWs(hub *Hub, w http.ResponseWriter, r *http.Request) {
+	conn, err := upgrader.Upgrade(w, r, nil)
+
+	if err != nil {
+		log.Println(err)
+		conn.Close()
+		return
+	}
+
+	client, err := newClient(hub, conn, r)
+
+	if err != nil {
+		log.Println(err)
+		conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		conn.Close()
+		return
+	}
+
+	go client.readPump()
+	go client.writePump()
 }

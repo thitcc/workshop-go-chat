@@ -2,8 +2,6 @@ package main
 
 import (
 	"log"
-
-	"github.com/gorilla/websocket"
 )
 
 type Hub struct {
@@ -26,8 +24,8 @@ func (h *Hub) run() {
 	for {
 		select {
 		case message := <-h.broadcast:
-			for c := range h.clients {
-				c.conn.WriteMessage(websocket.TextMessage, message)
+			for client := range h.clients {
+				client.send <- message
 			}
 		case client := <-h.register:
 			h.clients[client] = true
