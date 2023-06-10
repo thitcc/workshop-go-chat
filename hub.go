@@ -32,12 +32,12 @@ func (h *Hub) run() {
 		case client := <-h.register:
 			h.clients[client] = true
 
-			log.Println("Usuário conectado")
+			log.Println("Usuário conectado: ", client.Name)
 		case client := <-h.unregister:
 			client.conn.Close()
 			delete(h.clients, client)
 
-			log.Println("Usuário desconectado")
+			log.Println("Usuário desconectado: ", client.Name)
 		}
 	}
 }

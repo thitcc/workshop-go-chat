@@ -18,7 +18,14 @@ func handleChat(hub *Hub, w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	client := newClient(hub, conn)
+	client, err := newClient(hub, conn, r)
+
+	if err != nil {
+		log.Println(err)
+		conn.WriteMessage(websocket.TextMessage, []byte(err.Error()))
+		conn.Close()
+		return
+	}
 
 	go client.handleMessage()
 }
