@@ -9,6 +9,8 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
+var connections []*websocket.Conn
+
 func handleMessage(conn *websocket.Conn) {
 	defer func() {
 		conn.Close()
@@ -26,6 +28,10 @@ func handleMessage(conn *websocket.Conn) {
 		}
 
 		log.Println(string(message))
+
+		for _, conn := range connections {
+			conn.WriteMessage(websocket.TextMessage, message)
+		}
 	}
 }
 
@@ -39,6 +45,8 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		conn.Close()
 		return
 	}
+
+	connections = append(connections, conn)
 
 	go handleMessage(conn)
 }
