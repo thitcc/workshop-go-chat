@@ -9,9 +9,7 @@ import (
 
 var upgrader = websocket.Upgrader{}
 
-var connections []*websocket.Conn
-
-func handleMessage(conn *websocket.Conn) {
+func handleMessage(hub *Hub, conn *websocket.Conn) {
 	defer func() {
 		conn.Close()
 		log.Println("Usuário desconectado")
@@ -29,13 +27,11 @@ func handleMessage(conn *websocket.Conn) {
 
 		log.Println(string(message))
 
-		for _, conn := range connections {
-			conn.WriteMessage(websocket.TextMessage, message)
-		}
+		hub.broadcast <- message
 	}
 }
 
-func handleChat(w http.ResponseWriter, r *http.Request) {
+func handleChat(hub *Hub, w http.ResponseWriter, r *http.Request) {
 	log.Println("Usuário conectado")
 
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -46,15 +42,20 @@ func handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	connections = append(connections, conn)
+	hub.connections = append(hub.connections, conn)
 
-	go handleMessage(conn)
+	go handleMessage(hub, conn)
 }
 
 func main() {
+	hub := newHub()
+	go hub.run()
+
 	log.Println("Servidor iniciado na porta 8080")
 
-	http.HandleFunc("/chat", handleChat)
+	http.HandleFunc("/chat", func(w http.ResponseWriter, r *http.Request) {
+		handleChat(hub, w, r)
+	})
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
