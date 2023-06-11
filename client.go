@@ -36,7 +36,10 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 
 	name := params.Get("name")
 
+	var user_list []string
+
 	for c := range hub.clients {
+		user_list = append(user_list, c.Name)
 		if name == c.Name {
 			return nil, fmt.Errorf("esse nome já existe: %s", name)
 		}
@@ -48,6 +51,12 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 		send: make(chan Event),
 		Name: name,
 	}
+
+	user_list = append(user_list, client.Name)
+
+	user_list_response := Event{Type: "user_list", Message: user_list}
+
+	client.conn.WriteJSON(user_list_response)
 
 	client.hub.register <- client
 
