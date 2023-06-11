@@ -4,9 +4,18 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
+
+const (
+	writeWait  = 10 * time.Second
+	pongWait   = 60 * time.Second
+	pingPeriod = (pongWait * 9) / 10
+)
+
+var upgrader = websocket.Upgrader{}
 
 type Client struct {
 	hub  *Hub
@@ -14,8 +23,6 @@ type Client struct {
 	send chan []byte
 	Name string
 }
-
-var upgrader = websocket.Upgrader{}
 
 func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error) {
 	params := r.URL.Query()
@@ -45,6 +52,11 @@ func (c *Client) readPump() {
 		c.hub.unregister <- c
 	}()
 
+	c.conn.SetPongHandler(func(string) error {
+		c.conn.SetReadDeadline(time.Now().Add(pongWait))
+		return nil
+	})
+
 	for {
 		_, message, err := c.conn.ReadMessage()
 
@@ -62,13 +74,34 @@ func (c *Client) readPump() {
 }
 
 func (c *Client) writePump() {
-	for message := range c.send {
-		err := c.conn.WriteMessage(websocket.TextMessage, message)
+	ticker := time.NewTicker(pingPeriod)
 
-		log.Println("mensagem recebida: ", string(message))
+	defer func() {
+		ticker.Stop()
+	}()
 
-		if err != nil {
-			log.Println(err)
+	for {
+		select {
+		case message, ok := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+
+			if !ok {
+				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				return
+			}
+
+			err := c.conn.WriteMessage(websocket.TextMessage, message)
+
+			log.Println("mensagem recebida: ", string(message))
+
+			if err != nil {
+				log.Println(err)
+			}
+		case <-ticker.C:
+			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := c.conn.WriteMessage(websocket.TextMessage, []byte("ping")); err != nil {
+				return
+			}
 		}
 	}
 }
