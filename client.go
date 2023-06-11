@@ -1,12 +1,14 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/valyala/fastjson"
 )
 
 const (
@@ -20,8 +22,13 @@ var upgrader = websocket.Upgrader{}
 type Client struct {
 	hub  *Hub
 	conn *websocket.Conn
-	send chan []byte
+	send chan Event
 	Name string
+}
+
+type Event struct {
+	Type    string      `json:"type"`
+	Message interface{} `json:"message"`
 }
 
 func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error) {
@@ -38,13 +45,21 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 	client := &Client{
 		hub:  hub,
 		conn: conn,
-		send: make(chan []byte),
+		send: make(chan Event),
 		Name: name,
 	}
 
 	client.hub.register <- client
 
 	return client, nil
+}
+
+func verifyMessage(message Event) bool {
+	msg, _ := json.Marshal(message)
+
+	return fastjson.Exists(msg, "type") &&
+		fastjson.Exists(msg, "message") &&
+		message.Type == "message"
 }
 
 func (c *Client) readPump() {
@@ -58,18 +73,19 @@ func (c *Client) readPump() {
 	})
 
 	for {
-		_, message, err := c.conn.ReadMessage()
+		var message Event
 
-		if err != nil {
+		if err := c.conn.ReadJSON(&message); err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseNormalClosure) {
 				log.Println("error: ", err)
 			}
 			break
 		}
 
-		log.Println("mensagem enviada: ", string(message))
-
-		c.hub.broadcast <- message
+		if ok := verifyMessage(message); ok {
+			c.hub.broadcast <- message
+			log.Println("mensagem enviada: ", message)
+		}
 	}
 }
 
@@ -90,12 +106,10 @@ func (c *Client) writePump() {
 				return
 			}
 
-			err := c.conn.WriteMessage(websocket.TextMessage, message)
-
-			log.Println("mensagem recebida: ", string(message))
-
-			if err != nil {
+			if err := c.conn.WriteJSON(message); err != nil {
 				log.Println(err)
+			} else {
+				log.Println("mensagem recebida: ", message)
 			}
 		case <-ticker.C:
 			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
