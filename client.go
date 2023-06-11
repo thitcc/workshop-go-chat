@@ -1,23 +1,25 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/valyala/fastjson"
 )
 
 const (
 	writeWait  = 10 * time.Second
 	pongWait   = 60 * time.Second
 	pingPeriod = (pongWait * 9) / 10
+	global     = "GLOBAL"
 )
 
-var upgrader = websocket.Upgrader{}
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+}
 
 type Client struct {
 	hub  *Hub
@@ -35,6 +37,10 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 	params := r.URL.Query()
 
 	name := params.Get("name")
+
+	if name == global {
+		return nil, fmt.Errorf("esse nome é inválido: %s", name)
+	}
 
 	var user_list []string
 
@@ -63,14 +69,6 @@ func newClient(hub *Hub, conn *websocket.Conn, r *http.Request) (*Client, error)
 	return client, nil
 }
 
-func verifyMessage(message Event) bool {
-	msg, _ := json.Marshal(message)
-
-	return fastjson.Exists(msg, "type") &&
-		fastjson.Exists(msg, "message") &&
-		message.Type == "message"
-}
-
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.unregister <- c
@@ -91,7 +89,7 @@ func (c *Client) readPump() {
 			break
 		}
 
-		if ok := verifyMessage(message); ok {
+		if message.Type == "message" {
 			c.hub.broadcast <- message
 			log.Println("mensagem enviada: ", message)
 		}
